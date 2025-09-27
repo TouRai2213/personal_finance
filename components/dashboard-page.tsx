@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Overview } from "@/components/overview"
 import { RecentTransactions } from "@/components/recent-transactions"
+import { PortfolioHoldings } from "@/components/portfolio-holdings"
 import { AccountSummary } from "@/components/account-summary"
 import { FinancialGoals } from "@/components/financial-goals"
 import { AddTransactionForm } from "@/components/add-transaction-form"
@@ -102,20 +103,7 @@ export default function DashboardPage() {
                   <CardTitle>Portfolio Holdings</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="text-sm font-medium mb-3 bg-gray-100 px-3 py-2 rounded-md">📈 Stocks</h3>
-                      <RecentTransactions onStockClick={setSelectedStock} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium mb-3 bg-gray-100 px-3 py-2 rounded-md">🏦 Funds</h3>
-                      <RecentTransactions onStockClick={setSelectedStock} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium mb-3 bg-gray-100 px-3 py-2 rounded-md">💱 Forex</h3>
-                      <RecentTransactions onStockClick={setSelectedStock} />
-                    </div>
-                  </div>
+                  <PortfolioHoldings onStockClick={setSelectedStock} />
                 </CardContent>
               </Card>
             </div>
