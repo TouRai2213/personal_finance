@@ -31,36 +31,58 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
   const [isSearching, setIsSearching] = useState(false)
   const [showSearchResults, setShowSearchResults] = useState(false)
 
+  // Load portfolio data from server
+  const loadPortfolioData = async () => {
+    try {
+      const response = await fetch('/api/portfolio')
+      if (response.ok) {
+        const data = await response.json()
+        setStocks(data.stocks || [])
+        setFunds(data.funds || [])
+        setForex(data.forex || [])
+      }
+    } catch (error) {
+      console.error('Error loading portfolio data:', error)
+    }
+  }
+
+  // Save stock to server
+  const saveStockToServer = async (stock: StockData) => {
+    try {
+      const response = await fetch('/api/portfolio/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ stock })
+      })
+      return response.ok
+    } catch (error) {
+      console.error('Error saving stock:', error)
+      return false
+    }
+  }
+
+  // Remove stock from server
+  const removeStockFromServer = async (symbol: string, type: 'stock' | 'fund' | 'forex') => {
+    try {
+      const response = await fetch('/api/portfolio/remove', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ symbol, type })
+      })
+      return response.ok
+    } catch (error) {
+      console.error('Error removing stock:', error)
+      return false
+    }
+  }
+
   // Load initial data
   useEffect(() => {
-    // You can add some default stocks here or load from localStorage
-    const defaultStocks: StockData[] = [
-      {
-        symbol: "AAPL",
-        name: "Apple Inc",
-        currentPrice: 120.50,
-        changePercent: 15.2,
-        type: "stock",
-        currency: "USD"
-      },
-      {
-        symbol: "TSLA",
-        name: "Tesla Stock",
-        currentPrice: 2400.00,
-        changePercent: 54.6,
-        type: "stock",
-        currency: "USD"
-      },
-      {
-        symbol: "MSFT",
-        name: "Microsoft",
-        currentPrice: 1200.00,
-        changePercent: 27.3,
-        type: "stock",
-        currency: "USD"
-      }
-    ]
-    setStocks(defaultStocks)
+    loadPortfolioData()
   }, [])
 
   const determineStockType = (symbol: string, name: string): 'stock' | 'fund' | 'forex' => {
@@ -85,29 +107,37 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     return 'stock'
   }
 
-  const handleAddStock = (newStock: StockData) => {
+  const handleAddStock = async (newStock: StockData) => {
     // Check if already exists
     const allItems = [...stocks, ...funds, ...forex]
     if (allItems.some(item => item.symbol === newStock.symbol)) {
       return // Already exists, don't add
     }
 
-    switch (newStock.type) {
-      case 'stock':
-        setStocks(prev => [...prev, newStock])
-        break
-      case 'fund':
-        setFunds(prev => [...prev, newStock])
-        break
-      case 'forex':
-        setForex(prev => [...prev, newStock])
-        break
-    }
+    // Save to server first
+    const success = await saveStockToServer(newStock)
+    if (success) {
+      // Update local state only if server save was successful
+      switch (newStock.type) {
+        case 'stock':
+          setStocks(prev => [...prev, newStock])
+          break
+        case 'fund':
+          setFunds(prev => [...prev, newStock])
+          break
+        case 'forex':
+          setForex(prev => [...prev, newStock])
+          break
+      }
 
-    // Clear search
-    setSearchQuery("")
-    setSearchResults([])
-    setShowSearchResults(false)
+      // Clear search
+      setSearchQuery("")
+      setSearchResults([])
+      setShowSearchResults(false)
+    } else {
+      // Show error message or retry logic
+      console.error('Failed to add stock to server')
+    }
   }
 
   const searchStock = useCallback(async (query: string) => {
@@ -160,17 +190,25 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     return () => clearTimeout(timeoutId)
   }, [searchQuery, searchStock])
 
-  const handleDeleteStock = (symbol: string, type: 'stock' | 'fund' | 'forex') => {
-    switch (type) {
-      case 'stock':
-        setStocks(prev => prev.filter(stock => stock.symbol !== symbol))
-        break
-      case 'fund':
-        setFunds(prev => prev.filter(fund => fund.symbol !== symbol))
-        break
-      case 'forex':
-        setForex(prev => prev.filter(fx => fx.symbol !== symbol))
-        break
+  const handleDeleteStock = async (symbol: string, type: 'stock' | 'fund' | 'forex') => {
+    // Remove from server first
+    const success = await removeStockFromServer(symbol, type)
+    if (success) {
+      // Update local state only if server deletion was successful
+      switch (type) {
+        case 'stock':
+          setStocks(prev => prev.filter(stock => stock.symbol !== symbol))
+          break
+        case 'fund':
+          setFunds(prev => prev.filter(fund => fund.symbol !== symbol))
+          break
+        case 'forex':
+          setForex(prev => prev.filter(fx => fx.symbol !== symbol))
+          break
+      }
+    } else {
+      // Show error message or retry logic
+      console.error('Failed to remove stock from server')
     }
   }
 
