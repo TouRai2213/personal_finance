@@ -99,10 +99,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
               <Card className="lg:col-span-3">
-                <CardHeader>
-                  <CardTitle>Portfolio Holdings</CardTitle>
-                </CardHeader>
-                <CardContent>
+                <CardContent className="pt-6">
                   <PortfolioHoldings onStockClick={setSelectedStock} />
                 </CardContent>
               </Card>
