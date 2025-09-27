@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { AddStockDialog } from "@/components/add-stock-dialog"
+import { useState, useEffect, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Edit3, X, Search } from "lucide-react"
+import { Edit3, X, Search, Plus, TrendingUp, Building2, DollarSign } from "lucide-react"
 
 interface StockData {
   symbol: string
@@ -28,6 +27,9 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
   const [forex, setForex] = useState<StockData[]>([])
   const [isEditMode, setIsEditMode] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<StockData[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [showSearchResults, setShowSearchResults] = useState(false)
 
   // Load initial data
   useEffect(() => {
@@ -61,7 +63,35 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     setStocks(defaultStocks)
   }, [])
 
+  const determineStockType = (symbol: string, name: string): 'stock' | 'fund' | 'forex' => {
+    const upperSymbol = symbol.toUpperCase()
+    const upperName = name.toUpperCase()
+
+    // Forex pairs
+    if (upperSymbol.includes('=X') || upperSymbol.includes('USD') ||
+        upperSymbol.includes('EUR') || upperSymbol.includes('GBP') ||
+        upperSymbol.includes('JPY') || upperSymbol.includes('CAD')) {
+      return 'forex'
+    }
+
+    // Fund keywords
+    if (upperName.includes('FUND') || upperName.includes('ETF') ||
+        upperName.includes('INDEX') || upperName.includes('TRUST') ||
+        upperSymbol.includes('FUND') || upperSymbol.includes('ETF')) {
+      return 'fund'
+    }
+
+    // Default to stock
+    return 'stock'
+  }
+
   const handleAddStock = (newStock: StockData) => {
+    // Check if already exists
+    const allItems = [...stocks, ...funds, ...forex]
+    if (allItems.some(item => item.symbol === newStock.symbol)) {
+      return // Already exists, don't add
+    }
+
     switch (newStock.type) {
       case 'stock':
         setStocks(prev => [...prev, newStock])
@@ -73,7 +103,62 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
         setForex(prev => [...prev, newStock])
         break
     }
+
+    // Clear search
+    setSearchQuery("")
+    setSearchResults([])
+    setShowSearchResults(false)
   }
+
+  const searchStock = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([])
+      setShowSearchResults(false)
+      return
+    }
+
+    setIsSearching(true)
+    setShowSearchResults(true)
+
+    try {
+      const response = await fetch(`/api/stock/${query.toUpperCase()}`)
+
+      if (!response.ok) {
+        throw new Error('Stock not found')
+      }
+
+      const data = await response.json()
+
+      const stockData: StockData = {
+        symbol: data.symbol,
+        name: data.name,
+        currentPrice: data.currentPrice,
+        changePercent: data.changePercent || 0,
+        type: determineStockType(data.symbol, data.name),
+        currency: data.currency || 'USD'
+      }
+
+      setSearchResults([stockData])
+    } catch (err) {
+      setSearchResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }, [])
+
+  // Debounced search
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery) {
+        searchStock(searchQuery)
+      } else {
+        setSearchResults([])
+        setShowSearchResults(false)
+      }
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery, searchStock])
 
   const handleDeleteStock = (symbol: string, type: 'stock' | 'fund' | 'forex') => {
     switch (type) {
@@ -122,8 +207,69 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     </div>
   )
 
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'stock':
+        return <TrendingUp className="h-4 w-4" />
+      case 'fund':
+        return <Building2 className="h-4 w-4" />
+      case 'forex':
+        return <DollarSign className="h-4 w-4" />
+      default:
+        return <TrendingUp className="h-4 w-4" />
+    }
+  }
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'stock':
+        return 'Stock'
+      case 'fund':
+        return 'Fund'
+      case 'forex':
+        return 'Forex'
+      default:
+        return 'Stock'
+    }
+  }
+
+  const renderSearchResult = (stock: StockData) => (
+    <div
+      key={stock.symbol}
+      className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border rounded-lg"
+      onClick={() => handleAddStock(stock)}
+    >
+      <div className="flex items-center space-x-3 flex-1">
+        <div className="flex items-center justify-center w-6 h-6 bg-green-100 rounded-full">
+          <Plus className="h-3 w-3 text-green-600" />
+        </div>
+        {getTypeIcon(stock.type)}
+        <div>
+          <div className="font-medium text-sm">{stock.name}</div>
+          <div className="text-xs text-gray-500 flex items-center gap-2">
+            <span>{stock.symbol}</span>
+            <Badge variant="outline" className="text-xs">
+              {getTypeLabel(stock.type)}
+            </Badge>
+          </div>
+        </div>
+      </div>
+      <div className="text-right">
+        <div className="font-medium text-sm">
+          ${stock.currentPrice?.toFixed(2) || 'N/A'}
+        </div>
+        <div className={`text-xs ${
+          (stock.changePercent || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+        }`}>
+          {(stock.changePercent || 0) >= 0 ? '+' : ''}
+          {stock.changePercent?.toFixed(2) || '0.00'}%
+        </div>
+      </div>
+    </div>
+  )
+
   const filterItems = (items: StockData[]) => {
-    if (!searchQuery) return items
+    if (!searchQuery || showSearchResults) return items
     return items.filter(item =>
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.symbol.toLowerCase().includes(searchQuery.toLowerCase())
@@ -173,22 +319,41 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
         <Input
-          placeholder="Search stocks, funds, or forex..."
+          placeholder="Search to add stocks, funds, or forex..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-10 h-9"
         />
-        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-          <AddStockDialog onAddStock={handleAddStock} />
-        </div>
       </div>
 
+      {/* Search Results */}
+      {showSearchResults && (
+        <div className="space-y-2">
+          {isSearching ? (
+            <div className="text-sm text-gray-600 text-center py-4">
+              Searching...
+            </div>
+          ) : searchResults.length > 0 ? (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-700 mb-2">Search Results:</div>
+              {searchResults.map(renderSearchResult)}
+            </div>
+          ) : searchQuery && (
+            <div className="text-sm text-gray-600 text-center py-4 border rounded-lg">
+              No results found for "{searchQuery}"
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Portfolio Sections */}
-      <div className="space-y-6">
-        {renderSection("Stocks", "📈", stocks, "stocks")}
-        {renderSection("Funds", "🏦", funds, "funds")}
-        {renderSection("Forex", "💱", forex, "forex")}
-      </div>
+      {!showSearchResults && (
+        <div className="space-y-6">
+          {renderSection("Stocks", "📈", stocks, "stocks")}
+          {renderSection("Funds", "🏦", funds, "funds")}
+          {renderSection("Forex", "💱", forex, "forex")}
+        </div>
+      )}
     </div>
   )
 }
