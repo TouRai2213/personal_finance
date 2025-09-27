@@ -96,10 +96,8 @@ export function Overview({ selectedStock }: OverviewProps) {
 
   useEffect(() => {
     if (selectedStock) {
-      // Extract symbol from stock name (assuming format like "Apple Inc (AAPL)")
-      const symbolMatch = selectedStock.match(/\(([^)]+)\)/)
-      const symbol = symbolMatch ? symbolMatch[1] : selectedStock.toUpperCase()
-      fetchStockHistory(symbol, selectedPeriod)
+      // selectedStock is now the symbol directly
+      fetchStockHistory(selectedStock, selectedPeriod)
     }
   }, [selectedStock, selectedPeriod])
 

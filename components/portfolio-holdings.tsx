@@ -219,7 +219,7 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     >
       <div
         className="space-y-1 flex-1 cursor-pointer"
-        onClick={() => !isEditMode && onStockClick?.(stock.name)}
+        onClick={() => !isEditMode && onStockClick?.(stock.symbol)}
       >
         <p className="text-sm font-medium leading-none">{stock.name}</p>
         <p className="text-sm text-muted-foreground">{stock.symbol}</p>
