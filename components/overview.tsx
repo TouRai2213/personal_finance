@@ -81,12 +81,6 @@ export function Overview({ selectedStock }: OverviewProps) {
     setMounted(true)
   }, [])
 
-  useEffect(() => {
-    if (mounted) {
-      console.log('Overview - selectedStock:', selectedStock)
-    }
-  }, [selectedStock, mounted])
-
   // Fetch historical data from server
   const fetchStockHistory = async (symbol: string, period: string) => {
     setIsLoading(true)
@@ -106,13 +100,13 @@ export function Overview({ selectedStock }: OverviewProps) {
   }
 
   useEffect(() => {
-    if (selectedStock) {
+    if (selectedStock && selectedStock.length > 0) {
       // selectedStock is now the symbol directly
       fetchStockHistory(selectedStock, selectedPeriod)
     }
   }, [selectedStock, selectedPeriod])
 
-  if (selectedStock) {
+  if (selectedStock && selectedStock.length > 0) {
     const data = stockData
     const firstPrice = data[0]?.price || 0
     const lastPrice = data[data.length - 1]?.price || currentPrice
@@ -122,11 +116,6 @@ export function Overview({ selectedStock }: OverviewProps) {
 
     return (
       <div className="space-y-4">
-        {mounted && (
-          <div className="text-xs text-gray-500 bg-yellow-100 p-2 rounded">
-            Debug: selectedStock = "{selectedStock}", data length = {data.length}
-          </div>
-        )}
         <div className="flex items-center justify-between">
           <div>
             <div className="text-3xl font-bold">${lastPrice.toFixed(2)}</div>
@@ -196,13 +185,7 @@ export function Overview({ selectedStock }: OverviewProps) {
   }
 
   return (
-    <div>
-      {mounted && (
-        <div className="text-xs text-gray-500 bg-red-100 p-2 rounded mb-2">
-          Debug: No stock selected (selectedStock = "{selectedStock}")
-        </div>
-      )}
-      <ResponsiveContainer width="100%" height={350}>
+    <ResponsiveContainer width="100%" height={350}>
         <BarChart data={defaultData}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="name" />
@@ -214,6 +197,5 @@ export function Overview({ selectedStock }: OverviewProps) {
         <Bar dataKey="Daily Return" fill="#f59e0b" />
       </BarChart>
     </ResponsiveContainer>
-    </div>
   )
 }

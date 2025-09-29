@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Overview } from "@/components/overview"
@@ -18,9 +18,6 @@ export default function DashboardPage() {
   const [showAddTransaction, setShowAddTransaction] = useState(false)
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null)
 
-  useEffect(() => {
-    console.log('Dashboard - selectedStock:', selectedStock)
-  }, [selectedStock])
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -93,13 +90,30 @@ export default function DashboardPage() {
             <TabsTrigger value="goals">Goals</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="space-y-4">
+            {/* Top full-width card for Financial Overview */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Financial Overview</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Overview selectedStock={null} />
+              </CardContent>
+            </Card>
+
+            {/* Bottom section with stock chart and portfolio list */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
               <Card className="lg:col-span-4">
                 <CardHeader>
-                  <CardTitle>{selectedStock?.name || "Financial Overview"}</CardTitle>
+                  <CardTitle>{selectedStock?.name || "Select a Stock"}</CardTitle>
                 </CardHeader>
                 <CardContent className="pl-2">
-                  <Overview selectedStock={selectedStock?.symbol} />
+                  {selectedStock ? (
+                    <Overview selectedStock={selectedStock.symbol} />
+                  ) : (
+                    <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+                      Select a stock from your portfolio to view its chart
+                    </div>
+                  )}
                 </CardContent>
               </Card>
               <Card className="lg:col-span-3">
