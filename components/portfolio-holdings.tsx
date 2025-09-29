@@ -52,6 +52,45 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     }
   }
 
+  // Update real-time prices for all stocks
+  const updateRealTimePrices = useCallback(async () => {
+    console.log('Updating real-time prices...')
+    const allItems = [...stocks, ...funds, ...forex]
+
+    for (const item of allItems) {
+      try {
+        const response = await fetch(`/api/stock/${item.symbol}`)
+        if (response.ok) {
+          const data = await response.json()
+
+          // Update the item with new price data
+          const updatedItem = {
+            ...item,
+            currentPrice: data.currentPrice || item.currentPrice,
+            changePercent: data.changePercent || ((data.currentPrice - data.previousClose) / data.previousClose * 100) || item.changePercent
+          }
+
+          // Update the appropriate state
+          if (item.type === 'stock') {
+            setStocks(prev => prev.map(s =>
+              s.symbol === item.symbol ? updatedItem : s
+            ))
+          } else if (item.type === 'fund') {
+            setFunds(prev => prev.map(f =>
+              f.symbol === item.symbol ? updatedItem : f
+            ))
+          } else if (item.type === 'forex') {
+            setForex(prev => prev.map(f =>
+              f.symbol === item.symbol ? updatedItem : f
+            ))
+          }
+        }
+      } catch (error) {
+        console.error(`Error updating price for ${item.symbol}:`, error)
+      }
+    }
+  }, [stocks, funds, forex])
+
   // Save stock to server
   const saveStockToServer = async (stock: StockData) => {
     try {
@@ -90,6 +129,27 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
   useEffect(() => {
     loadPortfolioData()
   }, [])
+
+  // Set up real-time price updates every 2 minutes
+  useEffect(() => {
+    // Initial update after loading
+    if (stocks.length > 0 || funds.length > 0 || forex.length > 0) {
+      // Initial update after a short delay to ensure data is loaded
+      const timeoutId = setTimeout(() => {
+        updateRealTimePrices()
+      }, 1000)
+
+      // Set up interval for updates every 2 minutes (120000ms)
+      const intervalId = setInterval(() => {
+        updateRealTimePrices()
+      }, 120000)
+
+      return () => {
+        clearTimeout(timeoutId)
+        clearInterval(intervalId)
+      }
+    }
+  }, [updateRealTimePrices])
 
   const determineStockType = (symbol: string, name: string): 'stock' | 'fund' | 'forex' => {
     const upperSymbol = symbol.toUpperCase()
@@ -273,7 +333,7 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     >
       <div className="flex items-center">
         <div
-          className="space-y-1 flex-1 cursor-pointer"
+          className="flex-1 cursor-pointer flex items-center"
           onClick={() => !isEditMode && onStockClick?.(stock.symbol, stock.name, {
             buyPrice: stock.buyPrice,
             buyDate: stock.buyDate,
@@ -281,17 +341,50 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
             sellDate: stock.sellDate
           })}
         >
-          <p className="text-sm font-medium leading-none">{stock.name}</p>
-          <p className="text-sm text-muted-foreground">{stock.symbol}</p>
+          {/* Stock name and symbol */}
+          <div className="space-y-1 flex-1">
+            <p className="text-sm font-medium leading-none">{stock.name}</p>
+            <p className="text-sm text-muted-foreground">{stock.symbol}</p>
+          </div>
+
+          {/* Current price centered */}
+          <div className="flex flex-col items-center px-3">
+            <span className="text-xs text-gray-500">Current</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">${stock.currentPrice.toFixed(2)}</span>
+              <span className={`text-xs ${stock.changePercent >= 0 ? "text-green-500" : "text-red-500"}`}>
+                {stock.changePercent >= 0 ? '+' : ''}{stock.changePercent.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+
+          {/* Profit/Loss section */}
+          <div className="text-right w-32">
+            {stock.buyPrice && stock.buyShares ? (
+              // Show profit/loss if buy info exists
+              (() => {
+                const currentValue = stock.currentPrice * stock.buyShares
+                const buyValue = stock.buyPrice * stock.buyShares
+                const profitLoss = currentValue - buyValue
+                const profitPercent = ((profitLoss / buyValue) * 100)
+
+                return (
+                  <div className="flex flex-col items-end">
+                    <span className="text-xs text-gray-500">P/L</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-medium ${profitLoss >= 0 ? "text-green-500" : "text-red-500"}`}>
+                        {profitLoss >= 0 ? '+' : ''}${profitLoss.toFixed(2)}
+                      </span>
+                      <span className={`text-xs ${profitLoss >= 0 ? "text-green-500" : "text-red-500"}`}>
+                        ({profitLoss >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%)
+                      </span>
+                    </div>
+                  </div>
+                )
+              })()
+            ) : null}
+          </div>
         </div>
-        <div className="ml-auto font-medium w-24 text-right">
-          <span className={stock.changePercent >= 0 ? "text-green-500" : "text-red-500"}>
-            {stock.changePercent >= 0 ? '+' : ''}${stock.currentPrice.toFixed(2)}
-          </span>
-        </div>
-        <Badge variant="outline" className="ml-2">
-          {stock.changePercent.toFixed(1)}%
-        </Badge>
         {isEditMode && (
           <Button
             size="sm"

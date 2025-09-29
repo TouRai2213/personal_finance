@@ -11,10 +11,12 @@ import {
   YAxis,
   LineChart,
   Line,
+  Area,
+  AreaChart,
   ReferenceDot,
 } from "recharts"
 import { Button } from "@/components/ui/button"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 
 const defaultData = [
   {
@@ -82,7 +84,9 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
   const [stockData, setStockData] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [currentPrice, setCurrentPrice] = useState(0)
+  const [hoveredData, setHoveredData] = useState<{price: number; date: string} | null>(null)
   const [mounted, setMounted] = useState(false)
+  const lastHoveredIndexRef = useRef<number | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -110,6 +114,31 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
     if (selectedStock && selectedStock.length > 0) {
       // selectedStock is now the symbol directly
       fetchStockHistory(selectedStock, selectedPeriod)
+
+      // Set different refresh intervals based on period
+      let refreshInterval: number
+      switch (selectedPeriod) {
+        case '1D':
+          refreshInterval = 120000 // 2 minutes (matching data interval)
+          break
+        case '1W':
+          refreshInterval = 300000 // 5 minutes (matching data interval)
+          break
+        case '30D':
+          refreshInterval = 3600000 // 1 hour (matching data interval)
+          break
+        default:
+          refreshInterval = 0 // No auto-refresh for daily data periods
+      }
+
+      if (refreshInterval > 0) {
+        const intervalId = setInterval(() => {
+          console.log(`Updating chart for ${selectedStock} - ${selectedPeriod}`)
+          fetchStockHistory(selectedStock, selectedPeriod)
+        }, refreshInterval)
+
+        return () => clearInterval(intervalId)
+      }
     }
   }, [selectedStock, selectedPeriod])
 
@@ -128,15 +157,18 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
     const targetDate = new Date(dateStr)
     let closest = stockData[0]
     let minDiff = Math.abs(new Date(closest.date).getTime() - targetDate.getTime())
+    let closestIndex = 0
 
-    for (const point of stockData) {
+    for (let i = 0; i < stockData.length; i++) {
+      const point = stockData[i]
       const diff = Math.abs(new Date(point.date).getTime() - targetDate.getTime())
       if (diff < minDiff) {
         minDiff = diff
         closest = point
+        closestIndex = i
       }
     }
-    return closest
+    return { ...closest, index: closestIndex }
   }
 
   if (selectedStock && selectedStock.length > 0) {
@@ -175,31 +207,68 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
           ))}
         </div>
 
-        {/* Transaction points legend */}
-        {(stockTransactionData?.buyDate || stockTransactionData?.sellDate) && (
-          <div className="flex gap-4 text-xs text-muted-foreground">
-            {stockTransactionData?.buyDate && (
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-white"></div>
-                <span>Buy: ${stockTransactionData.buyPrice?.toFixed(2)} ({stockTransactionData.buyDate})</span>
+        {/* Transaction points legend and hover info */}
+        {((stockTransactionData?.buyDate || stockTransactionData?.sellDate) || hoveredData) && (
+          <div className="flex justify-between items-center text-xs text-muted-foreground">
+            <div className="flex gap-4">
+              {stockTransactionData?.buyDate && (
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white"></div>
+                  <span>Buy: ${stockTransactionData.buyPrice?.toFixed(2)} ({stockTransactionData.buyDate})</span>
+                </div>
+              )}
+              {stockTransactionData?.sellDate && (
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white"></div>
+                  <span>Sell: ${stockTransactionData.sellPrice?.toFixed(2)} ({stockTransactionData.sellDate})</span>
+                </div>
+              )}
+            </div>
+
+            {/* Hover info - centered */}
+            {hoveredData && (
+              <div className="flex-1 text-center">
+                <span className="font-medium">${hoveredData.price.toFixed(2)} - {hoveredData.date}</span>
               </div>
             )}
-            {stockTransactionData?.sellDate && (
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white"></div>
-                <span>Sell: ${stockTransactionData.sellPrice?.toFixed(2)} ({stockTransactionData.sellDate})</span>
-              </div>
-            )}
+
           </div>
         )}
 
         <ResponsiveContainer width="100%" height={300}>
-          {isLoading ? (
+          {!mounted ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-sm text-gray-600">Loading chart...</div>
+            </div>
+          ) : isLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-sm text-gray-600">Loading chart data...</div>
             </div>
           ) : data.length > 0 ? (
-            <LineChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+            <AreaChart
+              data={data}
+              margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+              key={`${selectedStock}-${selectedPeriod}`}
+              onMouseMove={(e: any) => {
+                if (e && e.activeIndex !== undefined) {
+                  const index = parseInt(e.activeIndex);
+                  if (index >= 0 && index < data.length && index !== lastHoveredIndexRef.current) {
+                    lastHoveredIndexRef.current = index;
+                    const dataPoint = data[index];
+                    setHoveredData({ price: dataPoint.price, date: dataPoint.date });
+                  }
+                }
+              }}
+              onMouseLeave={() => {
+                lastHoveredIndexRef.current = null;
+                setHoveredData(null);
+              }}>
+              <defs>
+                <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={lineColor} stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor={lineColor} stopOpacity={0.05}/>
+                </linearGradient>
+              </defs>
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke="#e0e0e0"
@@ -209,57 +278,88 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
                 dataKey="name"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 12, fill: "#666" }}
-                interval={data.length > 50 ? Math.floor(data.length / 8) : data.length > 20 ? 4 : 0}
+                tick={(props: any) => {
+                  const { x, y, payload, index } = props;
+                  const dataPoint = data[index];
+                  // Only show labels for data points that have a name
+                  if (dataPoint?.name) {
+                    return (
+                      <text
+                        x={x}
+                        y={y + 15}
+                        fill="#666"
+                        fontSize={12}
+                        textAnchor="middle"
+                      >
+                        {dataPoint.name}
+                      </text>
+                    );
+                  }
+                  return null;
+                }}
+                interval={0}
               />
               <YAxis
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 12, fill: "#666" }}
-                domain={["dataMin - 5", "dataMax + 5"]}
+                tickFormatter={(value: number) => value.toFixed(2)}
+                domain={[
+                  (dataMin: number) => {
+                    // Add 0.2% padding below the minimum
+                    return dataMin * 0.998;
+                  },
+                  (dataMax: number) => {
+                    // Add 0.2% padding above the maximum
+                    return dataMax * 1.002;
+                  }
+                ]}
               />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(0, 0, 0, 0.8)",
-                  border: "none",
-                  borderRadius: "8px",
-                  color: "white",
-                  fontSize: "12px",
-                }}
-                formatter={(value: any) => [`$${value.toFixed(2)}`, "Price"]}
+                cursor={{ stroke: '#888', strokeWidth: 1, strokeDasharray: '3 3' }}
+                content={() => null}
+                isAnimationActive={false}
               />
-              <Line
+              <Area
                 dataKey="price"
                 stroke={lineColor}
                 strokeWidth={2}
+                fill="url(#colorArea)"
                 dot={false}
-                activeDot={{ r: 4, fill: lineColor }}
+                activeDot={false}
+                isAnimationActive={false}
               />
 
-              {/* Buy point */}
-              {stockTransactionData?.buyDate && stockTransactionData?.buyPrice && isDateInRange(stockTransactionData.buyDate) && (
-                <ReferenceDot
-                  x={findClosestDataPoint(stockTransactionData.buyDate)?.name}
-                  y={stockTransactionData.buyPrice}
-                  r={6}
-                  fill="#22c55e"
-                  stroke="#fff"
-                  strokeWidth={2}
-                />
-              )}
+              {/* Buy point - only show if date is within the chart data range */}
+              {stockTransactionData?.buyDate && stockTransactionData?.buyPrice && isDateInRange(stockTransactionData.buyDate) && (() => {
+                const closestPoint = findClosestDataPoint(stockTransactionData.buyDate)
+                return closestPoint ? (
+                  <ReferenceDot
+                    x={closestPoint.index}
+                    y={closestPoint.price}
+                    r={6}
+                    fill="#3b82f6"
+                    stroke="#fff"
+                    strokeWidth={2}
+                  />
+                ) : null
+              })()}
 
-              {/* Sell point */}
-              {stockTransactionData?.sellDate && stockTransactionData?.sellPrice && isDateInRange(stockTransactionData.sellDate) && (
-                <ReferenceDot
-                  x={findClosestDataPoint(stockTransactionData.sellDate)?.name}
-                  y={stockTransactionData.sellPrice}
-                  r={6}
-                  fill="#ef4444"
-                  stroke="#fff"
-                  strokeWidth={2}
-                />
-              )}
-            </LineChart>
+              {/* Sell point - only show if date is within the chart data range */}
+              {stockTransactionData?.sellDate && stockTransactionData?.sellPrice && isDateInRange(stockTransactionData.sellDate) && (() => {
+                const closestPoint = findClosestDataPoint(stockTransactionData.sellDate)
+                return closestPoint ? (
+                  <ReferenceDot
+                    x={closestPoint.index}
+                    y={closestPoint.price}
+                    r={6}
+                    fill="#ef4444"
+                    stroke="#fff"
+                    strokeWidth={2}
+                  />
+                ) : null
+              })()}
+            </AreaChart>
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-sm text-gray-600">No data available</div>
