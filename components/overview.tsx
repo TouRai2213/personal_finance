@@ -149,7 +149,13 @@ export function Overview({ selectedStock }: OverviewProps) {
             </div>
           ) : data.length > 0 ? (
             <LineChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#666" }} />
+              <XAxis
+                dataKey="name"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12, fill: "#666" }}
+                interval={data.length > 50 ? Math.floor(data.length / 8) : data.length > 20 ? 4 : 0}
+              />
               <YAxis
                 axisLine={false}
                 tickLine={false}
