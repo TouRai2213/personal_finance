@@ -16,7 +16,7 @@ import { SavingsOverview } from "@/components/savings-overview"
 
 export default function DashboardPage() {
   const [showAddTransaction, setShowAddTransaction] = useState(false)
-  const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null)
+  const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string; buyPrice?: number; buyDate?: string; sellPrice?: number; sellDate?: string } | null>(null)
 
 
   return (
@@ -108,7 +108,15 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent className="pl-2">
                   {selectedStock ? (
-                    <Overview selectedStock={selectedStock.symbol} />
+                    <Overview
+                      selectedStock={selectedStock.symbol}
+                      stockData={{
+                        buyPrice: selectedStock.buyPrice,
+                        buyDate: selectedStock.buyDate,
+                        sellPrice: selectedStock.sellPrice,
+                        sellDate: selectedStock.sellDate
+                      }}
+                    />
                   ) : (
                     <div className="flex items-center justify-center h-[350px] text-muted-foreground">
                       Select a stock from your portfolio to view its chart
@@ -118,7 +126,7 @@ export default function DashboardPage() {
               </Card>
               <Card className="lg:col-span-3">
                 <CardContent className="pt-6">
-                  <PortfolioHoldings onStockClick={(symbol, name) => setSelectedStock({ symbol, name })} />
+                  <PortfolioHoldings onStockClick={(symbol, name, stockData) => setSelectedStock({ symbol, name, ...stockData })} />
                 </CardContent>
               </Card>
             </div>

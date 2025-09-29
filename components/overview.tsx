@@ -11,6 +11,7 @@ import {
   YAxis,
   LineChart,
   Line,
+  ReferenceDot,
 } from "recharts"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -68,9 +69,15 @@ const timePeriods = [
 
 interface OverviewProps {
   selectedStock?: string | null
+  stockData?: {
+    buyPrice?: number
+    buyDate?: string
+    sellPrice?: number
+    sellDate?: string
+  }
 }
 
-export function Overview({ selectedStock }: OverviewProps) {
+export function Overview({ selectedStock, stockData: stockTransactionData }: OverviewProps) {
   const [selectedPeriod, setSelectedPeriod] = useState("6M")
   const [stockData, setStockData] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -105,6 +112,32 @@ export function Overview({ selectedStock }: OverviewProps) {
       fetchStockHistory(selectedStock, selectedPeriod)
     }
   }, [selectedStock, selectedPeriod])
+
+  // Helper function to check if a date falls within the chart data range
+  const isDateInRange = (dateStr: string) => {
+    if (!dateStr || stockData.length === 0) return false
+    const targetDate = new Date(dateStr)
+    const firstDataDate = new Date(stockData[0]?.date)
+    const lastDataDate = new Date(stockData[stockData.length - 1]?.date)
+    return targetDate >= firstDataDate && targetDate <= lastDataDate
+  }
+
+  // Find the closest data point to a transaction date
+  const findClosestDataPoint = (dateStr: string) => {
+    if (!dateStr || stockData.length === 0) return null
+    const targetDate = new Date(dateStr)
+    let closest = stockData[0]
+    let minDiff = Math.abs(new Date(closest.date).getTime() - targetDate.getTime())
+
+    for (const point of stockData) {
+      const diff = Math.abs(new Date(point.date).getTime() - targetDate.getTime())
+      if (diff < minDiff) {
+        minDiff = diff
+        closest = point
+      }
+    }
+    return closest
+  }
 
   if (selectedStock && selectedStock.length > 0) {
     const data = stockData
@@ -141,6 +174,24 @@ export function Overview({ selectedStock }: OverviewProps) {
             </Button>
           ))}
         </div>
+
+        {/* Transaction points legend */}
+        {(stockTransactionData?.buyDate || stockTransactionData?.sellDate) && (
+          <div className="flex gap-4 text-xs text-muted-foreground">
+            {stockTransactionData?.buyDate && (
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-white"></div>
+                <span>Buy: ${stockTransactionData.buyPrice?.toFixed(2)} ({stockTransactionData.buyDate})</span>
+              </div>
+            )}
+            {stockTransactionData?.sellDate && (
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white"></div>
+                <span>Sell: ${stockTransactionData.sellPrice?.toFixed(2)} ({stockTransactionData.sellDate})</span>
+              </div>
+            )}
+          </div>
+        )}
 
         <ResponsiveContainer width="100%" height={300}>
           {isLoading ? (
@@ -184,6 +235,30 @@ export function Overview({ selectedStock }: OverviewProps) {
                 dot={false}
                 activeDot={{ r: 4, fill: lineColor }}
               />
+
+              {/* Buy point */}
+              {stockTransactionData?.buyDate && stockTransactionData?.buyPrice && isDateInRange(stockTransactionData.buyDate) && (
+                <ReferenceDot
+                  x={findClosestDataPoint(stockTransactionData.buyDate)?.name}
+                  y={stockTransactionData.buyPrice}
+                  r={6}
+                  fill="#22c55e"
+                  stroke="#fff"
+                  strokeWidth={2}
+                />
+              )}
+
+              {/* Sell point */}
+              {stockTransactionData?.sellDate && stockTransactionData?.sellPrice && isDateInRange(stockTransactionData.sellDate) && (
+                <ReferenceDot
+                  x={findClosestDataPoint(stockTransactionData.sellDate)?.name}
+                  y={stockTransactionData.sellPrice}
+                  r={6}
+                  fill="#ef4444"
+                  stroke="#fff"
+                  strokeWidth={2}
+                />
+              )}
             </LineChart>
           ) : (
             <div className="flex items-center justify-center h-full">

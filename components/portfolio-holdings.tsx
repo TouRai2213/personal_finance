@@ -22,7 +22,7 @@ interface StockData {
 }
 
 interface PortfolioHoldingsProps {
-  onStockClick?: (symbol: string, name: string) => void
+  onStockClick?: (symbol: string, name: string, stockData: { buyPrice?: number; buyDate?: string; sellPrice?: number; sellDate?: string }) => void
   title?: string
   showEditButton?: boolean
 }
@@ -274,7 +274,12 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
       <div className="flex items-center">
         <div
           className="space-y-1 flex-1 cursor-pointer"
-          onClick={() => !isEditMode && onStockClick?.(stock.symbol, stock.name)}
+          onClick={() => !isEditMode && onStockClick?.(stock.symbol, stock.name, {
+            buyPrice: stock.buyPrice,
+            buyDate: stock.buyDate,
+            sellPrice: stock.sellPrice,
+            sellDate: stock.sellDate
+          })}
         >
           <p className="text-sm font-medium leading-none">{stock.name}</p>
           <p className="text-sm text-muted-foreground">{stock.symbol}</p>
