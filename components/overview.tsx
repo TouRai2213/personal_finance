@@ -149,6 +149,11 @@ export function Overview({ selectedStock }: OverviewProps) {
             </div>
           ) : data.length > 0 ? (
             <LineChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#e0e0e0"
+                vertical={false}
+              />
               <XAxis
                 dataKey="name"
                 axisLine={false}
