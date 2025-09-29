@@ -5,6 +5,15 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Edit3, X, Search, Plus, TrendingUp, Building2, DollarSign } from "lucide-react"
+import { formatPrice, getCurrencyFromSymbol } from "@/lib/currency"
+
+interface Transaction {
+  type: 'buy' | 'sell'
+  price: number
+  shares: number
+  date: string
+  id: string
+}
 
 interface StockData {
   symbol: string
@@ -13,6 +22,8 @@ interface StockData {
   changePercent: number
   type: 'stock' | 'fund' | 'forex'
   currency: string
+  transactions?: Transaction[]
+  // Keep old fields for backward compatibility
   buyPrice?: number
   buyShares?: number
   buyDate?: string
@@ -22,7 +33,7 @@ interface StockData {
 }
 
 interface PortfolioHoldingsProps {
-  onStockClick?: (symbol: string, name: string, stockData: { buyPrice?: number; buyDate?: string; sellPrice?: number; sellDate?: string }) => void
+  onStockClick?: (symbol: string, name: string, stockData: { transactions?: Transaction[]; buyPrice?: number; buyDate?: string; sellPrice?: number; sellDate?: string }) => void
   title?: string
   showEditButton?: boolean
 }
@@ -91,6 +102,101 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     }
   }, [stocks, funds, forex])
 
+  // Save transactions to server
+  const saveTransactionsToServer = async (symbol: string, transactions: Transaction[]) => {
+    // Find the stock type
+    let stockType = 'stock'
+    const allStocks = stocks.concat(funds).concat(forex)
+    const stock = allStocks.find(s => s.symbol === symbol)
+    if (stock) {
+      stockType = stock.type
+    }
+
+    try {
+      const response = await fetch('/api/portfolio/update-transactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ symbol, type: stockType, transactions })
+      })
+
+      if (response.ok) {
+        // Update local state with server data
+        if (stockType === 'stock') {
+          setStocks(prev => prev.map(s =>
+            s.symbol === symbol ? { ...s, transactions } : s
+          ))
+        } else if (stockType === 'fund') {
+          setFunds(prev => prev.map(f =>
+            f.symbol === symbol ? { ...f, transactions } : f
+          ))
+        } else if (stockType === 'forex') {
+          setForex(prev => prev.map(f =>
+            f.symbol === symbol ? { ...f, transactions } : f
+          ))
+        }
+      } else {
+        console.error('Failed to save transactions to server')
+      }
+    } catch (error) {
+      console.error('Error saving transactions:', error)
+    }
+  }
+
+  // Helper functions for transactions
+  const generateTransactionId = () => {
+    return Date.now().toString() + Math.random().toString(36).substr(2, 9)
+  }
+
+  const calculatePositionAndPL = (stock: StockData) => {
+    let totalBuyShares = 0
+    let totalBuyValue = 0
+    let totalSellShares = 0
+    let totalSellValue = 0
+    let avgBuyPrice = 0
+
+    // Use new transactions array if available
+    if (stock.transactions && stock.transactions.length > 0) {
+      stock.transactions.forEach(transaction => {
+        if (transaction.type === 'buy') {
+          totalBuyShares += transaction.shares
+          totalBuyValue += transaction.price * transaction.shares
+        } else {
+          totalSellShares += transaction.shares
+          totalSellValue += transaction.price * transaction.shares
+        }
+      })
+    } else {
+      // Fallback to old single transaction fields
+      if (stock.buyPrice && stock.buyShares) {
+        totalBuyShares = stock.buyShares
+        totalBuyValue = stock.buyPrice * stock.buyShares
+      }
+      if (stock.sellPrice && stock.sellShares) {
+        totalSellShares = stock.sellShares
+        totalSellValue = stock.sellPrice * stock.sellShares
+      }
+    }
+
+    avgBuyPrice = totalBuyShares > 0 ? totalBuyValue / totalBuyShares : 0
+    const currentShares = totalBuyShares - totalSellShares
+    const currentValue = currentShares * stock.currentPrice
+    const costBasis = currentShares > 0 ? (totalBuyValue - totalSellValue * (totalBuyValue / (totalBuyValue + totalSellValue))) : 0
+    const unrealizedPL = currentValue - costBasis
+    const realizedPL = totalSellValue - (totalSellShares * avgBuyPrice)
+
+    return {
+      totalBuyShares,
+      totalSellShares,
+      currentShares,
+      avgBuyPrice,
+      unrealizedPL,
+      realizedPL,
+      totalPL: unrealizedPL + realizedPL
+    }
+  }
+
   // Save stock to server
   const saveStockToServer = async (stock: StockData) => {
     try {
@@ -130,6 +236,69 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     loadPortfolioData()
   }, [])
 
+  // Initialize editing transactions from existing data only once per stock
+  useEffect(() => {
+    const initTransactions: {[key: string]: Transaction[]} = {}
+    const newlyInitialized = new Set<string>()
+    const allStocks = stocks.concat(funds).concat(forex)
+
+    allStocks.forEach(stock => {
+      // Only initialize if we haven't initialized this stock yet
+      if (initializedStocks.has(stock.symbol)) {
+        return // Skip if already initialized
+      }
+
+      const transactions: Transaction[] = []
+
+      // Use server transactions if available
+      if (stock.transactions && stock.transactions.length > 0) {
+        initTransactions[stock.symbol] = stock.transactions
+        newlyInitialized.add(stock.symbol)
+        return
+      }
+
+      // Convert existing single transaction fields to transaction array as fallback
+      if (stock.buyPrice && stock.buyShares && stock.buyDate) {
+        transactions.push({
+          id: generateTransactionId(),
+          type: 'buy',
+          price: stock.buyPrice,
+          shares: stock.buyShares,
+          date: stock.buyDate
+        })
+      }
+
+      if (stock.sellPrice && stock.sellShares && stock.sellDate) {
+        transactions.push({
+          id: generateTransactionId(),
+          type: 'sell',
+          price: stock.sellPrice,
+          shares: stock.sellShares,
+          date: stock.sellDate
+        })
+      }
+
+      if (transactions.length > 0) {
+        initTransactions[stock.symbol] = transactions
+      }
+
+      newlyInitialized.add(stock.symbol)
+    })
+
+    // Only update if we have new data to add
+    if (Object.keys(initTransactions).length > 0) {
+      setEditingTransactions(prev => ({
+        ...prev,
+        ...initTransactions
+      }))
+    }
+
+    // Update initialized stocks set
+    if (newlyInitialized.size > 0) {
+      setInitializedStocks(prev => new Set([...prev, ...newlyInitialized]))
+    }
+  }, [stocks, funds, forex])
+
   // Set up real-time price updates every 2 minutes
   useEffect(() => {
     // Initial update after loading
@@ -155,6 +324,11 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     const upperSymbol = symbol.toUpperCase()
     const upperName = name.toUpperCase()
 
+    // Japanese fund codes (8 digits)
+    if (/^\d{8}$/.test(symbol)) {
+      return 'fund'
+    }
+
     // Forex pairs
     if (upperSymbol.includes('=X') || upperSymbol.includes('USD') ||
         upperSymbol.includes('EUR') || upperSymbol.includes('GBP') ||
@@ -162,10 +336,12 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
       return 'forex'
     }
 
-    // Fund keywords
+    // Fund keywords (including Japanese terms)
     if (upperName.includes('FUND') || upperName.includes('ETF') ||
         upperName.includes('INDEX') || upperName.includes('TRUST') ||
-        upperSymbol.includes('FUND') || upperSymbol.includes('ETF')) {
+        upperSymbol.includes('FUND') || upperSymbol.includes('ETF') ||
+        upperName.includes('投資信託') || upperName.includes('ファンド') ||
+        upperName.includes('EMAXIS') || upperName.includes('基準価額')) {
       return 'fund'
     }
 
@@ -230,7 +406,7 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
         name: data.name,
         currentPrice: data.currentPrice,
         changePercent: data.changePercent || 0,
-        type: determineStockType(data.symbol, data.name),
+        type: data.type || determineStockType(data.symbol, data.name),
         currency: data.currency || 'USD'
       }
 
@@ -279,6 +455,58 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
   }
 
   const [editingPrices, setEditingPrices] = useState<{[key: string]: {buyPrice?: number, buyShares?: number, buyDate?: string, sellPrice?: number, sellShares?: number, sellDate?: string}}>({})
+  const [editingTransactions, setEditingTransactions] = useState<{[key: string]: Transaction[]}>({})
+  const [initializedStocks, setInitializedStocks] = useState<Set<string>>(new Set())
+
+  const addTransaction = async (stockSymbol: string, type: 'buy' | 'sell') => {
+    const newTransaction: Transaction = {
+      id: generateTransactionId(),
+      type,
+      price: 0,
+      shares: 0,
+      date: new Date().toISOString().split('T')[0]
+    }
+
+    const currentTransactions = editingTransactions[stockSymbol] || []
+    const updatedTransactions = currentTransactions.concat([newTransaction])
+
+    setEditingTransactions(prev => ({
+      ...prev,
+      [stockSymbol]: updatedTransactions
+    }))
+
+    // Save to server immediately
+    await saveTransactionsToServer(stockSymbol, updatedTransactions)
+  }
+
+  const updateTransaction = async (stockSymbol: string, transactionId: string, field: keyof Omit<Transaction, 'id' | 'type'>, value: string | number) => {
+    const updatedTransactions = (editingTransactions[stockSymbol] || []).map(t =>
+      t.id === transactionId ? { ...t, [field]: value } : t
+    )
+
+    setEditingTransactions(prev => ({
+      ...prev,
+      [stockSymbol]: updatedTransactions
+    }))
+
+    // Save to server with debounce
+    clearTimeout((window as any)[`transaction-timeout-${stockSymbol}-${transactionId}`])
+    ;(window as any)[`transaction-timeout-${stockSymbol}-${transactionId}`] = setTimeout(() => {
+      saveTransactionsToServer(stockSymbol, updatedTransactions)
+    }, 1000)
+  }
+
+  const removeTransaction = async (stockSymbol: string, transactionId: string) => {
+    const updatedTransactions = (editingTransactions[stockSymbol] || []).filter(t => t.id !== transactionId)
+
+    setEditingTransactions(prev => ({
+      ...prev,
+      [stockSymbol]: updatedTransactions
+    }))
+
+    // Save to server immediately
+    await saveTransactionsToServer(stockSymbol, updatedTransactions)
+  }
 
   const handleFieldChange = (symbol: string, fieldType: 'buyPrice' | 'buyShares' | 'buyDate' | 'sellPrice' | 'sellShares' | 'sellDate', value: string) => {
     let processedValue: any = value
@@ -335,6 +563,7 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
         <div
           className="flex-1 cursor-pointer flex items-center"
           onClick={() => !isEditMode && onStockClick?.(stock.symbol, stock.name, {
+            transactions: editingTransactions[stock.symbol] || stock.transactions,
             buyPrice: stock.buyPrice,
             buyDate: stock.buyDate,
             sellPrice: stock.sellPrice,
@@ -351,7 +580,7 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
           <div className="flex flex-col items-center px-3">
             <span className="text-xs text-gray-500">Current</span>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">${stock.currentPrice.toFixed(2)}</span>
+              <span className="text-sm font-medium">{formatPrice(stock.currentPrice, stock.currency || getCurrencyFromSymbol(stock.symbol))}</span>
               <span className={`text-xs ${stock.changePercent >= 0 ? "text-green-500" : "text-red-500"}`}>
                 {stock.changePercent >= 0 ? '+' : ''}{stock.changePercent.toFixed(1)}%
               </span>
@@ -360,29 +589,29 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
 
           {/* Profit/Loss section */}
           <div className="text-right w-32">
-            {stock.buyPrice && stock.buyShares ? (
-              // Show profit/loss if buy info exists
-              (() => {
-                const currentValue = stock.currentPrice * stock.buyShares
-                const buyValue = stock.buyPrice * stock.buyShares
-                const profitLoss = currentValue - buyValue
-                const profitPercent = ((profitLoss / buyValue) * 100)
+            {(() => {
+              const position = calculatePositionAndPL(stock)
+              const hasPosition = position.currentShares > 0 || position.totalBuyShares > 0
 
-                return (
-                  <div className="flex flex-col items-end">
-                    <span className="text-xs text-gray-500">P/L</span>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm font-medium ${profitLoss >= 0 ? "text-green-500" : "text-red-500"}`}>
-                        {profitLoss >= 0 ? '+' : ''}${profitLoss.toFixed(2)}
-                      </span>
-                      <span className={`text-xs ${profitLoss >= 0 ? "text-green-500" : "text-red-500"}`}>
-                        ({profitLoss >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%)
-                      </span>
-                    </div>
+              if (!hasPosition) return null
+
+              const profitLoss = position.unrealizedPL
+              const profitPercent = position.avgBuyPrice > 0 ? ((stock.currentPrice - position.avgBuyPrice) / position.avgBuyPrice * 100) : 0
+
+              return (
+                <div className="flex flex-col items-end">
+                  <span className="text-xs text-gray-500">P/L</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-medium ${profitLoss >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      {profitLoss >= 0 ? '+' : '-'}{formatPrice(Math.abs(profitLoss), stock.currency || getCurrencyFromSymbol(stock.symbol)).replace(/^./, '')}
+                    </span>
+                    <span className={`text-xs ${profitPercent >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      ({profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%)
+                    </span>
                   </div>
-                )
-              })()
-            ) : null}
+                </div>
+              )
+            })()}
           </div>
         </div>
         {isEditMode && (
@@ -397,73 +626,110 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
         )}
       </div>
       {isEditMode && (
-        <div className="space-y-2">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-muted-foreground w-10">Buy:</span>
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="Price"
-                value={editingPrices[stock.symbol]?.buyPrice ?? stock.buyPrice ?? ''}
-                onChange={(e) => handleFieldChange(stock.symbol, 'buyPrice', e.target.value)}
-                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'buyPrice', parseFloat(e.target.value) || undefined)}
-                className="h-7 w-20 text-xs"
-              />
-              <span className="text-xs text-muted-foreground">×</span>
-              <Input
-                type="number"
-                step="1"
-                placeholder="Shares"
-                value={editingPrices[stock.symbol]?.buyShares ?? stock.buyShares ?? ''}
-                onChange={(e) => handleFieldChange(stock.symbol, 'buyShares', e.target.value)}
-                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'buyShares', parseFloat(e.target.value) || undefined)}
-                className="h-7 w-16 text-xs"
-              />
+        <div className="space-y-3">
+          {/* Buy Transactions */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-medium text-green-600">Buy Transactions:</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-xs"
+                onClick={() => addTransaction(stock.symbol, 'buy')}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Add Buy
+              </Button>
             </div>
-            <div className="flex items-center gap-1 ml-11">
-              <Input
-                type="date"
-                placeholder="Date"
-                value={editingPrices[stock.symbol]?.buyDate ?? stock.buyDate ?? ''}
-                onChange={(e) => handleFieldChange(stock.symbol, 'buyDate', e.target.value)}
-                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'buyDate', e.target.value || undefined)}
-                className="h-7 w-32 text-xs"
-              />
+            <div className="space-y-1">
+              {(editingTransactions[stock.symbol]?.filter(t => t.type === 'buy') || []).map((transaction) => (
+                <div key={transaction.id} className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Price"
+                    value={transaction.price || ''}
+                    onChange={(e) => updateTransaction(stock.symbol, transaction.id, 'price', parseFloat(e.target.value) || 0)}
+                    className="h-7 w-20 text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground">×</span>
+                  <Input
+                    type="number"
+                    step="1"
+                    placeholder="Shares"
+                    value={transaction.shares || ''}
+                    onChange={(e) => updateTransaction(stock.symbol, transaction.id, 'shares', parseFloat(e.target.value) || 0)}
+                    className="h-7 w-16 text-xs"
+                  />
+                  <Input
+                    type="date"
+                    value={transaction.date}
+                    onChange={(e) => updateTransaction(stock.symbol, transaction.id, 'date', e.target.value)}
+                    className="h-7 w-32 text-xs"
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                    onClick={() => removeTransaction(stock.symbol, transaction.id)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-muted-foreground w-10">Sell:</span>
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="Price"
-                value={editingPrices[stock.symbol]?.sellPrice ?? stock.sellPrice ?? ''}
-                onChange={(e) => handleFieldChange(stock.symbol, 'sellPrice', e.target.value)}
-                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'sellPrice', parseFloat(e.target.value) || undefined)}
-                className="h-7 w-20 text-xs"
-              />
-              <span className="text-xs text-muted-foreground">×</span>
-              <Input
-                type="number"
-                step="1"
-                placeholder="Shares"
-                value={editingPrices[stock.symbol]?.sellShares ?? stock.sellShares ?? ''}
-                onChange={(e) => handleFieldChange(stock.symbol, 'sellShares', e.target.value)}
-                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'sellShares', parseFloat(e.target.value) || undefined)}
-                className="h-7 w-16 text-xs"
-              />
+
+          {/* Sell Transactions */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-medium text-red-600">Sell Transactions:</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-xs"
+                onClick={() => addTransaction(stock.symbol, 'sell')}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Add Sell
+              </Button>
             </div>
-            <div className="flex items-center gap-1 ml-11">
-              <Input
-                type="date"
-                placeholder="Date"
-                value={editingPrices[stock.symbol]?.sellDate ?? stock.sellDate ?? ''}
-                onChange={(e) => handleFieldChange(stock.symbol, 'sellDate', e.target.value)}
-                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'sellDate', e.target.value || undefined)}
-                className="h-7 w-32 text-xs"
-              />
+            <div className="space-y-1">
+              {(editingTransactions[stock.symbol]?.filter(t => t.type === 'sell') || []).map((transaction) => (
+                <div key={transaction.id} className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Price"
+                    value={transaction.price || ''}
+                    onChange={(e) => updateTransaction(stock.symbol, transaction.id, 'price', parseFloat(e.target.value) || 0)}
+                    className="h-7 w-20 text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground">×</span>
+                  <Input
+                    type="number"
+                    step="1"
+                    placeholder="Shares"
+                    value={transaction.shares || ''}
+                    onChange={(e) => updateTransaction(stock.symbol, transaction.id, 'shares', parseFloat(e.target.value) || 0)}
+                    className="h-7 w-16 text-xs"
+                  />
+                  <Input
+                    type="date"
+                    value={transaction.date}
+                    onChange={(e) => updateTransaction(stock.symbol, transaction.id, 'date', e.target.value)}
+                    className="h-7 w-32 text-xs"
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                    onClick={() => removeTransaction(stock.symbol, transaction.id)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -520,7 +786,7 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
       </div>
       <div className="text-right">
         <div className="font-medium text-sm">
-          ${stock.currentPrice?.toFixed(2) || 'N/A'}
+          {formatPrice(stock.currentPrice, stock.currency || getCurrencyFromSymbol(stock.symbol))}
         </div>
         <div className={`text-xs ${
           (stock.changePercent || 0) >= 0 ? 'text-green-600' : 'text-red-600'

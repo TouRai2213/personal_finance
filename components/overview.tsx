@@ -17,6 +17,7 @@ import {
 } from "recharts"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, useRef } from "react"
+import { formatPrice, getCurrencyFromSymbol } from "@/lib/currency"
 
 const defaultData = [
   {
@@ -69,9 +70,18 @@ const timePeriods = [
   { label: "2Y", value: "2Y" },
 ]
 
+interface Transaction {
+  type: 'buy' | 'sell'
+  price: number
+  shares: number
+  date: string
+  id: string
+}
+
 interface OverviewProps {
   selectedStock?: string | null
   stockData?: {
+    transactions?: Transaction[]
     buyPrice?: number
     buyDate?: string
     sellPrice?: number
@@ -87,6 +97,9 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
   const [hoveredData, setHoveredData] = useState<{price: number; date: string} | null>(null)
   const [mounted, setMounted] = useState(false)
   const lastHoveredIndexRef = useRef<number | null>(null)
+
+  // Check if the selected symbol is a Japanese fund (8 digits)
+  const isJapaneseFund = selectedStock && /^\d{8}$/.test(selectedStock)
 
   useEffect(() => {
     setMounted(true)
@@ -183,7 +196,7 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-3xl font-bold">${lastPrice.toFixed(2)}</div>
+            <div className="text-3xl font-bold">{formatPrice(lastPrice, selectedStock ? getCurrencyFromSymbol(selectedStock) : 'USD')}</div>
             <div className={`text-sm font-medium ${isPositive ? "text-green-600" : "text-red-600"}`}>
               {isPositive ? "+" : ""}
               {changePercent}% ({selectedPeriod})
@@ -208,32 +221,69 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
         </div>
 
         {/* Transaction points legend and hover info */}
-        {((stockTransactionData?.buyDate || stockTransactionData?.sellDate) || hoveredData) && (
-          <div className="flex justify-between items-center text-xs text-muted-foreground">
-            <div className="flex gap-4">
-              {stockTransactionData?.buyDate && (
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white"></div>
-                  <span>Buy: ${stockTransactionData.buyPrice?.toFixed(2)} ({stockTransactionData.buyDate})</span>
-                </div>
-              )}
-              {stockTransactionData?.sellDate && (
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white"></div>
-                  <span>Sell: ${stockTransactionData.sellPrice?.toFixed(2)} ({stockTransactionData.sellDate})</span>
+        {(() => {
+          const hasTransactions = stockTransactionData?.transactions?.length > 0 ||
+                                stockTransactionData?.buyDate || stockTransactionData?.sellDate
+
+          if (!hasTransactions && !hoveredData) return null
+
+          // Calculate average buy price from transactions
+          const buyTransactions = stockTransactionData?.transactions?.filter(t => t.type === 'buy') || []
+          const sellTransactions = stockTransactionData?.transactions?.filter(t => t.type === 'sell') || []
+
+          let avgBuyPrice = 0
+          let avgSellPrice = 0
+
+          if (buyTransactions.length > 0) {
+            const totalBuyValue = buyTransactions.reduce((sum, t) => sum + (t.price * t.shares), 0)
+            const totalBuyShares = buyTransactions.reduce((sum, t) => sum + t.shares, 0)
+            avgBuyPrice = totalBuyValue / totalBuyShares
+          } else if (stockTransactionData?.buyPrice) {
+            avgBuyPrice = stockTransactionData.buyPrice
+          }
+
+          if (sellTransactions.length > 0) {
+            const totalSellValue = sellTransactions.reduce((sum, t) => sum + (t.price * t.shares), 0)
+            const totalSellShares = sellTransactions.reduce((sum, t) => sum + t.shares, 0)
+            avgSellPrice = totalSellValue / totalSellShares
+          } else if (stockTransactionData?.sellPrice) {
+            avgSellPrice = stockTransactionData.sellPrice
+          }
+
+          return (
+            <div className="flex justify-between items-center text-xs text-muted-foreground">
+              <div className="flex gap-4">
+                {(buyTransactions.length > 0 || stockTransactionData?.buyDate) && (
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white"></div>
+                    <span>
+                      Avg Buy: {formatPrice(avgBuyPrice, selectedStock ? getCurrencyFromSymbol(selectedStock) : 'USD')}
+                      {buyTransactions.length > 1 ? ` (${buyTransactions.length} trades)` :
+                       stockTransactionData?.buyDate ? ` (${stockTransactionData.buyDate})` : ''}
+                    </span>
+                  </div>
+                )}
+                {(sellTransactions.length > 0 || stockTransactionData?.sellDate) && (
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white"></div>
+                    <span>
+                      Avg Sell: {formatPrice(avgSellPrice, selectedStock ? getCurrencyFromSymbol(selectedStock) : 'USD')}
+                      {sellTransactions.length > 1 ? ` (${sellTransactions.length} trades)` :
+                       stockTransactionData?.sellDate ? ` (${stockTransactionData.sellDate})` : ''}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Hover info - centered */}
+              {hoveredData && (
+                <div className="flex-1 text-center">
+                  <span className="font-medium">{formatPrice(hoveredData.price, selectedStock ? getCurrencyFromSymbol(selectedStock) : 'USD')} - {hoveredData.date}</span>
                 </div>
               )}
             </div>
-
-            {/* Hover info - centered */}
-            {hoveredData && (
-              <div className="flex-1 text-center">
-                <span className="font-medium">${hoveredData.price.toFixed(2)} - {hoveredData.date}</span>
-              </div>
-            )}
-
-          </div>
-        )}
+          )
+        })()}
 
         <ResponsiveContainer width="100%" height={300}>
           {!mounted ? (
@@ -330,8 +380,28 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
                 isAnimationActive={false}
               />
 
-              {/* Buy point - only show if date is within the chart data range */}
-              {stockTransactionData?.buyDate && stockTransactionData?.buyPrice && isDateInRange(stockTransactionData.buyDate) && (() => {
+              {/* Transaction points - show all buy/sell transactions */}
+              {stockTransactionData?.transactions?.map((transaction) => {
+                if (!isDateInRange(transaction.date)) return null
+
+                const closestPoint = findClosestDataPoint(transaction.date)
+                if (!closestPoint) return null
+
+                return (
+                  <ReferenceDot
+                    key={transaction.id}
+                    x={closestPoint.index}
+                    y={closestPoint.price}
+                    r={6}
+                    fill={transaction.type === 'buy' ? "#3b82f6" : "#ef4444"}
+                    stroke="#fff"
+                    strokeWidth={2}
+                  />
+                )
+              })}
+
+              {/* Fallback to old single transaction display */}
+              {!stockTransactionData?.transactions && stockTransactionData?.buyDate && stockTransactionData?.buyPrice && isDateInRange(stockTransactionData.buyDate) && (() => {
                 const closestPoint = findClosestDataPoint(stockTransactionData.buyDate)
                 return closestPoint ? (
                   <ReferenceDot
@@ -345,8 +415,7 @@ export function Overview({ selectedStock, stockData: stockTransactionData }: Ove
                 ) : null
               })()}
 
-              {/* Sell point - only show if date is within the chart data range */}
-              {stockTransactionData?.sellDate && stockTransactionData?.sellPrice && isDateInRange(stockTransactionData.sellDate) && (() => {
+              {!stockTransactionData?.transactions && stockTransactionData?.sellDate && stockTransactionData?.sellPrice && isDateInRange(stockTransactionData.sellDate) && (() => {
                 const closestPoint = findClosestDataPoint(stockTransactionData.sellDate)
                 return closestPoint ? (
                   <ReferenceDot

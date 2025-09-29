@@ -14,9 +14,27 @@ import { Plus } from "lucide-react"
 import { LoansOverview } from "@/components/loans-overview"
 import { SavingsOverview } from "@/components/savings-overview"
 
+interface Transaction {
+  type: 'buy' | 'sell'
+  price: number
+  shares: number
+  date: string
+  id: string
+}
+
+interface SelectedStockData {
+  symbol: string
+  name: string
+  transactions?: Transaction[]
+  buyPrice?: number
+  buyDate?: string
+  sellPrice?: number
+  sellDate?: string
+}
+
 export default function DashboardPage() {
   const [showAddTransaction, setShowAddTransaction] = useState(false)
-  const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string; buyPrice?: number; buyDate?: string; sellPrice?: number; sellDate?: string } | null>(null)
+  const [selectedStock, setSelectedStock] = useState<SelectedStockData | null>(null)
 
 
   return (
@@ -111,6 +129,7 @@ export default function DashboardPage() {
                     <Overview
                       selectedStock={selectedStock.symbol}
                       stockData={{
+                        transactions: selectedStock.transactions,
                         buyPrice: selectedStock.buyPrice,
                         buyDate: selectedStock.buyDate,
                         sellPrice: selectedStock.sellPrice,

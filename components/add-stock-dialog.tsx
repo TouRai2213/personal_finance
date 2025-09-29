@@ -40,6 +40,11 @@ export function AddStockDialog({ onAddStock }: AddStockDialogProps) {
     const upperSymbol = symbol.toUpperCase()
     const upperName = name.toUpperCase()
 
+    // Japanese fund codes (8 digits)
+    if (/^\d{8}$/.test(symbol)) {
+      return 'fund'
+    }
+
     // Forex pairs
     if (upperSymbol.includes('=X') || upperSymbol.includes('USD') ||
         upperSymbol.includes('EUR') || upperSymbol.includes('GBP') ||
@@ -47,15 +52,28 @@ export function AddStockDialog({ onAddStock }: AddStockDialogProps) {
       return 'forex'
     }
 
-    // Fund keywords
+    // Fund keywords (including Japanese terms)
     if (upperName.includes('FUND') || upperName.includes('ETF') ||
         upperName.includes('INDEX') || upperName.includes('TRUST') ||
-        upperSymbol.includes('FUND') || upperSymbol.includes('ETF')) {
+        upperSymbol.includes('FUND') || upperSymbol.includes('ETF') ||
+        upperName.includes('投資信託') || upperName.includes('ファンド') ||
+        upperName.includes('EMAXIS') || upperName.includes('基準価額')) {
       return 'fund'
     }
 
     // Default to stock
     return 'stock'
+  }
+
+  const formatSymbol = (query: string): string => {
+    const trimmedQuery = query.trim()
+
+    // Check if it's a 4-digit number (Japanese stock)
+    if (/^\d{4}$/.test(trimmedQuery)) {
+      return `${trimmedQuery}.T`
+    }
+
+    return trimmedQuery.toUpperCase()
   }
 
   const searchStock = async (query: string) => {
@@ -68,7 +86,8 @@ export function AddStockDialog({ onAddStock }: AddStockDialogProps) {
     setError("")
 
     try {
-      const response = await fetch(`/api/stock/${query.toUpperCase()}`)
+      const formattedSymbol = formatSymbol(query)
+      const response = await fetch(`/api/stock/${formattedSymbol}`)
 
       if (!response.ok) {
         throw new Error('Stock not found')
@@ -76,14 +95,20 @@ export function AddStockDialog({ onAddStock }: AddStockDialogProps) {
 
       const data = await response.json()
 
+      // Debug logging
+      console.log('API Response:', data)
+      console.log('Detected type:', data.type || determineStockType(data.symbol, data.name))
+
       const stockData: StockData = {
         symbol: data.symbol,
         name: data.name,
         currentPrice: data.currentPrice,
         changePercent: data.changePercent || 0,
-        type: determineStockType(data.symbol, data.name),
+        type: data.type || determineStockType(data.symbol, data.name),
         currency: data.currency || 'USD'
       }
+
+      console.log('Final stockData:', stockData)
 
       setSearchResults([stockData])
     } catch (err) {
@@ -132,6 +157,19 @@ export function AddStockDialog({ onAddStock }: AddStockDialogProps) {
     }
   }
 
+  const formatPrice = (price: number | undefined, currency: string) => {
+    if (!price) return 'N/A'
+
+    switch (currency) {
+      case 'JPY':
+        return `¥${price.toFixed(0)}`
+      case 'USD':
+        return `$${price.toFixed(2)}`
+      default:
+        return `${currency} ${price.toFixed(2)}`
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -155,7 +193,7 @@ export function AddStockDialog({ onAddStock }: AddStockDialogProps) {
             <div className="col-span-3 flex gap-2">
               <Input
                 id="symbol"
-                placeholder="e.g., AAPL, TSLA, EURUSD=X"
+                placeholder="e.g., AAPL, TSLA, 7974 (日股), EURUSD=X"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -202,7 +240,7 @@ export function AddStockDialog({ onAddStock }: AddStockDialogProps) {
                   </div>
                   <div className="text-right">
                     <div className="font-medium text-sm">
-                      ${stock.currentPrice?.toFixed(2) || 'N/A'}
+                      {formatPrice(stock.currentPrice, stock.currency)}
                     </div>
                     <div className={`text-xs ${
                       (stock.changePercent || 0) >= 0 ? 'text-green-600' : 'text-red-600'
