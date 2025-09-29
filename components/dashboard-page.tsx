@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Overview } from "@/components/overview"
@@ -18,7 +18,9 @@ export default function DashboardPage() {
   const [showAddTransaction, setShowAddTransaction] = useState(false)
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null)
 
-  console.log('Dashboard - selectedStock:', selectedStock)
+  useEffect(() => {
+    console.log('Dashboard - selectedStock:', selectedStock)
+  }, [selectedStock])
 
   return (
     <div className="flex min-h-screen w-full flex-col">

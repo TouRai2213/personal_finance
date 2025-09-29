@@ -75,8 +75,17 @@ export function Overview({ selectedStock }: OverviewProps) {
   const [stockData, setStockData] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [currentPrice, setCurrentPrice] = useState(0)
+  const [mounted, setMounted] = useState(false)
 
-  console.log('Overview - selectedStock:', selectedStock)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (mounted) {
+      console.log('Overview - selectedStock:', selectedStock)
+    }
+  }, [selectedStock, mounted])
 
   // Fetch historical data from server
   const fetchStockHistory = async (symbol: string, period: string) => {
@@ -113,9 +122,11 @@ export function Overview({ selectedStock }: OverviewProps) {
 
     return (
       <div className="space-y-4">
-        <div className="text-xs text-gray-500 bg-yellow-100 p-2 rounded">
-          Debug: selectedStock = "{selectedStock}", data length = {data.length}
-        </div>
+        {mounted && (
+          <div className="text-xs text-gray-500 bg-yellow-100 p-2 rounded">
+            Debug: selectedStock = "{selectedStock}", data length = {data.length}
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <div className="text-3xl font-bold">${lastPrice.toFixed(2)}</div>
@@ -186,9 +197,11 @@ export function Overview({ selectedStock }: OverviewProps) {
 
   return (
     <div>
-      <div className="text-xs text-gray-500 bg-red-100 p-2 rounded mb-2">
-        Debug: No stock selected (selectedStock = "{selectedStock}")
-      </div>
+      {mounted && (
+        <div className="text-xs text-gray-500 bg-red-100 p-2 rounded mb-2">
+          Debug: No stock selected (selectedStock = "{selectedStock}")
+        </div>
+      )}
       <ResponsiveContainer width="100%" height={350}>
         <BarChart data={defaultData}>
         <CartesianGrid strokeDasharray="3 3" />
