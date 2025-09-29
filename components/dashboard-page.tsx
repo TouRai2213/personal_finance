@@ -18,6 +18,8 @@ export default function DashboardPage() {
   const [showAddTransaction, setShowAddTransaction] = useState(false)
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null)
 
+  console.log('Dashboard - selectedStock:', selectedStock)
+
   return (
     <div className="flex min-h-screen w-full flex-col">
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">

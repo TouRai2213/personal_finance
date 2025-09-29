@@ -76,6 +76,8 @@ export function Overview({ selectedStock }: OverviewProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [currentPrice, setCurrentPrice] = useState(0)
 
+  console.log('Overview - selectedStock:', selectedStock)
+
   // Fetch historical data from server
   const fetchStockHistory = async (symbol: string, period: string) => {
     setIsLoading(true)
