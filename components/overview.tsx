@@ -113,6 +113,9 @@ export function Overview({ selectedStock }: OverviewProps) {
 
     return (
       <div className="space-y-4">
+        <div className="text-xs text-gray-500 bg-yellow-100 p-2 rounded">
+          Debug: selectedStock = "{selectedStock}", data length = {data.length}
+        </div>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-3xl font-bold">${lastPrice.toFixed(2)}</div>
@@ -182,8 +185,12 @@ export function Overview({ selectedStock }: OverviewProps) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={350}>
-      <BarChart data={defaultData}>
+    <div>
+      <div className="text-xs text-gray-500 bg-red-100 p-2 rounded mb-2">
+        Debug: No stock selected (selectedStock = "{selectedStock}")
+      </div>
+      <ResponsiveContainer width="100%" height={350}>
+        <BarChart data={defaultData}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="name" />
         <YAxis />
@@ -194,5 +201,6 @@ export function Overview({ selectedStock }: OverviewProps) {
         <Bar dataKey="Daily Return" fill="#f59e0b" />
       </BarChart>
     </ResponsiveContainer>
+    </div>
   )
 }
