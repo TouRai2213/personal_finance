@@ -13,6 +13,10 @@ interface StockData {
   changePercent: number
   type: 'stock' | 'fund' | 'forex'
   currency: string
+  buyPrice?: number
+  buyShares?: number
+  sellPrice?: number
+  sellShares?: number
 }
 
 interface PortfolioHoldingsProps {
@@ -212,35 +216,132 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     }
   }
 
+  const [editingPrices, setEditingPrices] = useState<{[key: string]: {buyPrice?: number, buyShares?: number, sellPrice?: number, sellShares?: number}}>({})
+
+  const handlePriceChange = (symbol: string, fieldType: 'buyPrice' | 'buyShares' | 'sellPrice' | 'sellShares', value: string) => {
+    const numValue = parseFloat(value)
+    setEditingPrices(prev => ({
+      ...prev,
+      [symbol]: {
+        ...prev[symbol],
+        [fieldType]: isNaN(numValue) ? undefined : numValue
+      }
+    }))
+  }
+
+  const savePriceToServer = async (symbol: string, type: string, fieldType: 'buyPrice' | 'buyShares' | 'sellPrice' | 'sellShares', value: number | undefined) => {
+    try {
+      const response = await fetch('/api/portfolio/update-price', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ symbol, type, fieldType, value })
+      })
+      if (response.ok) {
+        // Update local state
+        if (type === 'stock') {
+          setStocks(prev => prev.map(s =>
+            s.symbol === symbol ? {...s, [fieldType]: value} : s
+          ))
+        } else if (type === 'fund') {
+          setFunds(prev => prev.map(f =>
+            f.symbol === symbol ? {...f, [fieldType]: value} : f
+          ))
+        } else if (type === 'forex') {
+          setForex(prev => prev.map(f =>
+            f.symbol === symbol ? {...f, [fieldType]: value} : f
+          ))
+        }
+      }
+    } catch (error) {
+      console.error('Error saving price:', error)
+    }
+  }
+
   const renderStockItem = (stock: StockData) => (
     <div
       key={stock.symbol}
-      className="flex items-center hover:bg-muted/50 p-2 rounded-md transition-colors"
+      className={`flex flex-col hover:bg-muted/50 p-2 rounded-md transition-colors ${isEditMode ? 'space-y-2' : ''}`}
     >
-      <div
-        className="space-y-1 flex-1 cursor-pointer"
-        onClick={() => !isEditMode && onStockClick?.(stock.symbol, stock.name)}
-      >
-        <p className="text-sm font-medium leading-none">{stock.name}</p>
-        <p className="text-sm text-muted-foreground">{stock.symbol}</p>
-      </div>
-      <div className="ml-auto font-medium w-24 text-right">
-        <span className={stock.changePercent >= 0 ? "text-green-500" : "text-red-500"}>
-          {stock.changePercent >= 0 ? '+' : ''}${stock.currentPrice.toFixed(2)}
-        </span>
-      </div>
-      <Badge variant="outline" className="ml-2">
-        {stock.changePercent.toFixed(1)}%
-      </Badge>
-      {isEditMode && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="ml-2 h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-          onClick={() => handleDeleteStock(stock.symbol, stock.type)}
+      <div className="flex items-center">
+        <div
+          className="space-y-1 flex-1 cursor-pointer"
+          onClick={() => !isEditMode && onStockClick?.(stock.symbol, stock.name)}
         >
-          <X className="h-3 w-3" />
-        </Button>
+          <p className="text-sm font-medium leading-none">{stock.name}</p>
+          <p className="text-sm text-muted-foreground">{stock.symbol}</p>
+        </div>
+        <div className="ml-auto font-medium w-24 text-right">
+          <span className={stock.changePercent >= 0 ? "text-green-500" : "text-red-500"}>
+            {stock.changePercent >= 0 ? '+' : ''}${stock.currentPrice.toFixed(2)}
+          </span>
+        </div>
+        <Badge variant="outline" className="ml-2">
+          {stock.changePercent.toFixed(1)}%
+        </Badge>
+        {isEditMode && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-2 h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+            onClick={() => handleDeleteStock(stock.symbol, stock.type)}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+      {isEditMode && (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground w-10">Buy:</span>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Price"
+                value={editingPrices[stock.symbol]?.buyPrice ?? stock.buyPrice ?? ''}
+                onChange={(e) => handlePriceChange(stock.symbol, 'buyPrice', e.target.value)}
+                onBlur={(e) => savePriceToServer(stock.symbol, stock.type, 'buyPrice', parseFloat(e.target.value) || undefined)}
+                className="h-7 w-20 text-xs"
+              />
+              <span className="text-xs text-muted-foreground">×</span>
+              <Input
+                type="number"
+                step="1"
+                placeholder="Shares"
+                value={editingPrices[stock.symbol]?.buyShares ?? stock.buyShares ?? ''}
+                onChange={(e) => handlePriceChange(stock.symbol, 'buyShares', e.target.value)}
+                onBlur={(e) => savePriceToServer(stock.symbol, stock.type, 'buyShares', parseFloat(e.target.value) || undefined)}
+                className="h-7 w-16 text-xs"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground w-10">Sell:</span>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Price"
+                value={editingPrices[stock.symbol]?.sellPrice ?? stock.sellPrice ?? ''}
+                onChange={(e) => handlePriceChange(stock.symbol, 'sellPrice', e.target.value)}
+                onBlur={(e) => savePriceToServer(stock.symbol, stock.type, 'sellPrice', parseFloat(e.target.value) || undefined)}
+                className="h-7 w-20 text-xs"
+              />
+              <span className="text-xs text-muted-foreground">×</span>
+              <Input
+                type="number"
+                step="1"
+                placeholder="Shares"
+                value={editingPrices[stock.symbol]?.sellShares ?? stock.sellShares ?? ''}
+                onChange={(e) => handlePriceChange(stock.symbol, 'sellShares', e.target.value)}
+                onBlur={(e) => savePriceToServer(stock.symbol, stock.type, 'sellShares', parseFloat(e.target.value) || undefined)}
+                className="h-7 w-16 text-xs"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
