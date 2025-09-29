@@ -16,7 +16,7 @@ import { SavingsOverview } from "@/components/savings-overview"
 
 export default function DashboardPage() {
   const [showAddTransaction, setShowAddTransaction] = useState(false)
-  const [selectedStock, setSelectedStock] = useState<string | null>(null)
+  const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null)
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -92,15 +92,15 @@ export default function DashboardPage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
               <Card className="lg:col-span-4">
                 <CardHeader>
-                  <CardTitle>{selectedStock || "Financial Overview"}</CardTitle>
+                  <CardTitle>{selectedStock?.name || "Financial Overview"}</CardTitle>
                 </CardHeader>
                 <CardContent className="pl-2">
-                  <Overview selectedStock={selectedStock} />
+                  <Overview selectedStock={selectedStock?.symbol} />
                 </CardContent>
               </Card>
               <Card className="lg:col-span-3">
                 <CardContent className="pt-6">
-                  <PortfolioHoldings onStockClick={setSelectedStock} />
+                  <PortfolioHoldings onStockClick={(symbol, name) => setSelectedStock({ symbol, name })} />
                 </CardContent>
               </Card>
             </div>
