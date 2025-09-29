@@ -15,8 +15,10 @@ interface StockData {
   currency: string
   buyPrice?: number
   buyShares?: number
+  buyDate?: string
   sellPrice?: number
   sellShares?: number
+  sellDate?: string
 }
 
 interface PortfolioHoldingsProps {
@@ -216,20 +218,25 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
     }
   }
 
-  const [editingPrices, setEditingPrices] = useState<{[key: string]: {buyPrice?: number, buyShares?: number, sellPrice?: number, sellShares?: number}}>({})
+  const [editingPrices, setEditingPrices] = useState<{[key: string]: {buyPrice?: number, buyShares?: number, buyDate?: string, sellPrice?: number, sellShares?: number, sellDate?: string}}>({})
 
-  const handlePriceChange = (symbol: string, fieldType: 'buyPrice' | 'buyShares' | 'sellPrice' | 'sellShares', value: string) => {
-    const numValue = parseFloat(value)
+  const handleFieldChange = (symbol: string, fieldType: 'buyPrice' | 'buyShares' | 'buyDate' | 'sellPrice' | 'sellShares' | 'sellDate', value: string) => {
+    let processedValue: any = value
+    if (fieldType.includes('Price') || fieldType.includes('Shares')) {
+      const numValue = parseFloat(value)
+      processedValue = isNaN(numValue) ? undefined : numValue
+    }
+
     setEditingPrices(prev => ({
       ...prev,
       [symbol]: {
         ...prev[symbol],
-        [fieldType]: isNaN(numValue) ? undefined : numValue
+        [fieldType]: processedValue
       }
     }))
   }
 
-  const savePriceToServer = async (symbol: string, type: string, fieldType: 'buyPrice' | 'buyShares' | 'sellPrice' | 'sellShares', value: number | undefined) => {
+  const saveFieldToServer = async (symbol: string, type: string, fieldType: 'buyPrice' | 'buyShares' | 'buyDate' | 'sellPrice' | 'sellShares' | 'sellDate', value: any) => {
     try {
       const response = await fetch('/api/portfolio/update-price', {
         method: 'POST',
@@ -293,7 +300,7 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
       </div>
       {isEditMode && (
         <div className="space-y-2">
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground w-10">Buy:</span>
               <Input
@@ -301,8 +308,8 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
                 step="0.01"
                 placeholder="Price"
                 value={editingPrices[stock.symbol]?.buyPrice ?? stock.buyPrice ?? ''}
-                onChange={(e) => handlePriceChange(stock.symbol, 'buyPrice', e.target.value)}
-                onBlur={(e) => savePriceToServer(stock.symbol, stock.type, 'buyPrice', parseFloat(e.target.value) || undefined)}
+                onChange={(e) => handleFieldChange(stock.symbol, 'buyPrice', e.target.value)}
+                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'buyPrice', parseFloat(e.target.value) || undefined)}
                 className="h-7 w-20 text-xs"
               />
               <span className="text-xs text-muted-foreground">×</span>
@@ -311,13 +318,23 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
                 step="1"
                 placeholder="Shares"
                 value={editingPrices[stock.symbol]?.buyShares ?? stock.buyShares ?? ''}
-                onChange={(e) => handlePriceChange(stock.symbol, 'buyShares', e.target.value)}
-                onBlur={(e) => savePriceToServer(stock.symbol, stock.type, 'buyShares', parseFloat(e.target.value) || undefined)}
+                onChange={(e) => handleFieldChange(stock.symbol, 'buyShares', e.target.value)}
+                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'buyShares', parseFloat(e.target.value) || undefined)}
                 className="h-7 w-16 text-xs"
               />
             </div>
+            <div className="flex items-center gap-1 ml-11">
+              <Input
+                type="date"
+                placeholder="Date"
+                value={editingPrices[stock.symbol]?.buyDate ?? stock.buyDate ?? ''}
+                onChange={(e) => handleFieldChange(stock.symbol, 'buyDate', e.target.value)}
+                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'buyDate', e.target.value || undefined)}
+                className="h-7 w-32 text-xs"
+              />
+            </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground w-10">Sell:</span>
               <Input
@@ -325,8 +342,8 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
                 step="0.01"
                 placeholder="Price"
                 value={editingPrices[stock.symbol]?.sellPrice ?? stock.sellPrice ?? ''}
-                onChange={(e) => handlePriceChange(stock.symbol, 'sellPrice', e.target.value)}
-                onBlur={(e) => savePriceToServer(stock.symbol, stock.type, 'sellPrice', parseFloat(e.target.value) || undefined)}
+                onChange={(e) => handleFieldChange(stock.symbol, 'sellPrice', e.target.value)}
+                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'sellPrice', parseFloat(e.target.value) || undefined)}
                 className="h-7 w-20 text-xs"
               />
               <span className="text-xs text-muted-foreground">×</span>
@@ -335,9 +352,19 @@ export function PortfolioHoldings({ onStockClick, title = "Portfolio Holdings", 
                 step="1"
                 placeholder="Shares"
                 value={editingPrices[stock.symbol]?.sellShares ?? stock.sellShares ?? ''}
-                onChange={(e) => handlePriceChange(stock.symbol, 'sellShares', e.target.value)}
-                onBlur={(e) => savePriceToServer(stock.symbol, stock.type, 'sellShares', parseFloat(e.target.value) || undefined)}
+                onChange={(e) => handleFieldChange(stock.symbol, 'sellShares', e.target.value)}
+                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'sellShares', parseFloat(e.target.value) || undefined)}
                 className="h-7 w-16 text-xs"
+              />
+            </div>
+            <div className="flex items-center gap-1 ml-11">
+              <Input
+                type="date"
+                placeholder="Date"
+                value={editingPrices[stock.symbol]?.sellDate ?? stock.sellDate ?? ''}
+                onChange={(e) => handleFieldChange(stock.symbol, 'sellDate', e.target.value)}
+                onBlur={(e) => saveFieldToServer(stock.symbol, stock.type, 'sellDate', e.target.value || undefined)}
+                className="h-7 w-32 text-xs"
               />
             </div>
           </div>
